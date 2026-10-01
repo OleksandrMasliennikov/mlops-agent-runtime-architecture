@@ -68,4 +68,21 @@ Approval — політика цієї архітектури. Запуск Prom
 
 У поганій схемі назва get_data та опис gets data не пояснюють призначення інструмента, тому LLM складно визначити, коли обирати його серед інших tools. Поле input без опису не уточнює, що передавати, а відсутність required дозволяє виклик із {}, який може спричинити помилку виконання. У покращеній схемі назва search_codebase та опис призначення й результатів допомагають моделі обрати інструмент для пошуку коду, який виконує сам tool. Описи аргументів, приклади, обов’язковий pattern і тип integer для max_results зменшують неоднозначність та ризик передати число рядком, як "5", підвищуючи ймовірність коректного виклику з першої спроби й зменшуючи кількість повторних спроб. Фільтр file_extension звужує пошук, а max_results обмежує кількість збігів і витрати токенів на результати, якщо сервер застосовує цей параметр та значення 20 за замовчуванням.
 
+# Task 1.3 — Choose a framework 
+
+| Сценарій | Вибір | Обґрунтування |
+|---|---|---|
+| **A — чат-бот підтримки** | **LangGraph** | Дозволяє явно описати розгалуження: пошук у документації → відповідь або передача людині. Збереження стану й human-in-the-loop допомагають продовжити роботу після втручання оператора. ([GitHub][1]) |
+| **B — щотижневий звіт** | **bare MCP** | Для фіксованої послідовності «зібрати дані → викликати LLM для підсумку → надіслати у Slack» достатньо простого скрипта з MCP-інструментами. Розклад, порядок кроків і обробку помилок реалізує застосунок: MCP забезпечує доступ до інструментів, а оркестрацією керує Host. ([GitHub][2]) |
+| **C — код → тести → виправлення** | **LangGraph** | Граф дозволяє побудувати цикл із переходом за результатами тестів і лічильником повторів у стані. Перевірка лічильника в коді гарантує завершення після максимум трьох повторів, незалежно від рішення LLM. ([LangChain Reference][3]) |
+| **D — Researcher → Analyst → Writer** | **CrewAI** | Підходить для команди агентів із чіткими ролями, цілями та окремими завданнями. Послідовний процес передає результати дослідження аналітику, а результати аналізу — автору звіту. ([CrewAI][4]) |
+
+[1]: https://github.com/langchain-ai/docs/blob/main/src/oss/langgraph/overview.mdx?utm_source=chatgpt.com "docs/src/oss/langgraph/overview.mdx at main · langchain-ai/docs"
+
+[2]: https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/docs/specification/2025-11-25/architecture/index.mdx?utm_source=chatgpt.com "modelcontextprotocol/docs/specification/2025-11-25/architecture/index.mdx at main · modelcontextprotocol/modelcontextprotocol"
+
+[3]: https://reference.langchain.com/python/langgraph/overview?utm_source=chatgpt.com "LangGraph - Python API Reference"
+
+[4]: https://docs.crewai.com/core-concepts/Agents?utm_source=chatgpt.com "Introduction"
+
 
