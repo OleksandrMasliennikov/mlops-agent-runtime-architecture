@@ -1,4 +1,4 @@
-# Task 1.1 — архітектура MCP
+# Task 1.1 — Draw the architecture MCP
 
 ![Архітектура MCP](diagram.png)
 
@@ -63,3 +63,9 @@ Approval — політика цієї архітектури. Запуск Prom
 - [MCP Transports, 2025-03-26](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports)
 - [MCP Server primitives, 2025-03-26](https://modelcontextprotocol.io/specification/2025-03-26/server/index)
 - [MCP Authorization, 2025-03-26](https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization)
+
+# Task 2.1 - Analyse a tool schema
+
+У поганій схемі назва get_data та опис gets data не пояснюють призначення інструмента, тому LLM складно визначити, коли обирати його серед інших tools. Поле input без опису не уточнює, що передавати, а відсутність required дозволяє виклик із {}, який може спричинити помилку виконання. У покращеній схемі назва search_codebase та опис призначення й результатів допомагають моделі обрати інструмент для пошуку коду, який виконує сам tool. Описи аргументів, приклади, обов’язковий pattern і тип integer для max_results зменшують неоднозначність та ризик передати число рядком, як "5", підвищуючи ймовірність коректного виклику з першої спроби й зменшуючи кількість повторних спроб. Фільтр file_extension звужує пошук, а max_results обмежує кількість збігів і витрати токенів на результати, якщо сервер застосовує цей параметр та значення 20 за замовчуванням.
+
+
