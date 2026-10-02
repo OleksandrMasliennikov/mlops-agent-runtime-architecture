@@ -1,27 +1,26 @@
 import asyncio
+import os
 import sys
 import traceback
-import langchain
 
 from mcp import StdioServerParameters, stdio_client, ClientSession
 from langchain_mcp_adapters.tools import load_mcp_tools
 # Використовуємо універсальний ChatOpenAI, адаптований під API Ollama
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
-from langchain.agents import create_agent
 from langgraph.checkpoint.memory import MemorySaver
 
 # Конфігурація параметрів запуску MCP-сервера через stdio
 server_params = StdioServerParameters(
-    command="python",
-    args=["/home/vagrant/labs/mcp_server_lab1.py"]
+    command=sys.executable,
+    args=[os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_server_lab1.py")]
 )
 
 
 async def main():
     print("[SYSTEM] Запуск клієнта LangChain...", file=sys.stderr)
     try:
-        async with asyncio.timeout(30):
+        async with asyncio.timeout(int(os.getenv("AGENT_TIMEOUT", "1200"))):
             # 1. Ініціалізація з'єднання з MCP-сервером
             async with stdio_client(server_params) as (read_stream, write_stream):
                 print("[SYSTEM] stdio_client з'єднання встановлено", file=sys.stderr)
@@ -36,8 +35,8 @@ async def main():
 
                     # 2. Налаштування моделі Ollama через сумісний OpenAI API клієнт
                     llm = ChatOpenAI(
-                        model="llama3.1:8b",
-                        base_url="http://192.168.88.188:11434/v1",
+                        model=os.getenv("OLLAMA_MODEL", "qwen2.5:7b"),
+                        base_url=os.getenv("OLLAMA_URL", "http://localhost:11434/v1"),
                         api_key="ollama",
                         temperature=0.0
                     )
@@ -56,8 +55,8 @@ async def main():
                     config = {"configurable": {"thread_id": "student_session_101"}}
 
                     # Перший крок розмови: запит на використання інструменту
-                    print("\n--- Крок 1: Пошук документів ---")
-                    inputs = {"messages": [("user", "Знайди документи за запитом 'системний аудит' та прочитай їх вміст.")]}
+                    print("\n--- Крок 1: list_directory + read_file ---")
+                    inputs = {"messages": [("user", "Покажи список файлів у поточному каталозі '.', а потім прочитай файл requirements.txt і перелічи пакети з нього.")]}
 
                     print("[SYSTEM] Надсилання запиту до Ollama (очікуйте на повну відповідь)...", file=sys.stderr)
 
@@ -72,13 +71,13 @@ async def main():
 
                     # Другий крок розмови: перевірка пам'яті за тим самим thread_id
                     print("\n\n--- Крок 2: Перевірка контексту пам'яті ---")
-                    inputs_2 = {"messages": [("user", "Який запит ми щойно шукали у базі знань?")]}
+                    inputs_2 = {"messages": [("user", "Який файл ти щойно читав?")]}
 
                     result_2 = await agent.ainvoke(inputs_2, config)
                     print("Відповідь з пам'яті агента:", result_2["messages"][-1].content)
 
     except TimeoutError:
-        print("[ERROR] Таймаут 30с: щось зависло (з'єднання з сервером, LLM або tool call).", file=sys.stderr)
+        print("[ERROR] Таймаут (AGENT_TIMEOUT): щось зависло (з'єднання з сервером, LLM або tool call).", file=sys.stderr)
         sys.exit(1)
     except Exception:
         print("[ERROR] Виникла помилка:", file=sys.stderr)

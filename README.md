@@ -86,3 +86,33 @@ Approval — політика цієї архітектури. Запуск Prom
 [4]: https://docs.crewai.com/core-concepts/Agents?utm_source=chatgpt.com "Introduction"
 
 
+
+# Task 2.1 — MCP server
+
+Сервер: [mcp_server_lab1.py](mcp_server_lab1.py) (FastMCP, transport stdio) з інструментами `read_file(path) -> str` і `list_directory(path) -> list[str]`. Схеми з описами генеруються з docstring та `Field(description=...)`. Неіснуючий шлях повертає повідомлення `ПОМИЛКА: ...` замість винятку.
+
+Запуск локально (без VM):
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+mcp dev mcp_server_lab1.py                      # інспектор (потрібен node/npx)
+OLLAMA_MODEL=qwen2.5:7b python lab2.py   # агент через локальну Ollama
+```
+
+## Промпти та ручні правки
+
+Використаний AI-інструмент: Claude Code (чат у IDE). Промпти:
+
+1. Текст завдання Task 2.1 (MCP-сервер з `read_file` і `list_directory`, stdio, JSON-схеми з `description`, обробка помилок) і прохання переробити наявні скрипти під мої умови: без VM Vagrant, з локальною Ollama (`mistral:7b-instruct-q4_K_M`).
+2. Повідомлення про помилки під час запуску: `mcp dev` просив `typer`; `lab2.py` падав з `ExceptionGroup`; агент не вкладався в таймаут. Кожного разу я вставляв вивід термінала й просив виправити.
+3. Прохання перейти на `qwen2.5:7b`.
+
+Що довелося виправляти за підсумком запусків:
+- Вихідний сервер мав інші інструменти (`search_documents`, `file_read`) і зламаний відступ у `call_tool_handler`; переписано на FastMCP з `read_file` та `list_directory`.
+- `pip install mcp` ставить 2.x, де `FastMCP` перейменовано на `MCPServer`; зафіксовано `mcp<2`.
+- `mcp dev` вимагає `typer`; залежність змінено на `mcp[cli]<2`.
+- Прибрано шлях `/home/vagrant/...` та IP VM: клієнт використовує `sys.executable` і шлях відносно файлу, Ollama - `localhost:11434`.
+- `mistral:7b-instruct-q4_K_M` не підтримує tools в Ollama (помилка 400 `does not support tools`); замінено на `qwen2.5:7b`.
+- Модель частково працює на CPU, тому таймаут зроблено налаштовуваним (`AGENT_TIMEOUT`, 1200 с), а агент читає короткий `requirements.txt` замість README.md.
+- На кроці 2 модель написала "я перечитав файл", хоча лише згадала вже прочитаний; це обмеження 7B-моделі, код тут ні до чого.
