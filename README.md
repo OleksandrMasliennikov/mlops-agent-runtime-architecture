@@ -89,14 +89,14 @@ Approval — політика цієї архітектури. Запуск Prom
 
 # Task 2.1 — MCP server
 
-Сервер: [mcp_server_lab1.py](mcp_server_lab1.py) (FastMCP, transport stdio) з інструментами `read_file(path) -> str` і `list_directory(path) -> list[str]`. Схеми з описами генеруються з docstring та `Field(description=...)`. Неіснуючий шлях повертає повідомлення `ПОМИЛКА: ...` замість винятку.
+Сервер: [mcp_server.py](mcp_server.py) (FastMCP, transport stdio) з інструментами `read_file(path) -> str` і `list_directory(path) -> list[str]`. Схеми з описами генеруються з docstring та `Field(description=...)`. Неіснуючий шлях повертає повідомлення `ПОМИЛКА: ...` замість винятку.
 
 Запуск локально (без VM):
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-mcp dev mcp_server_lab1.py                      # інспектор (потрібен node/npx)
+mcp dev mcp_server.py                      # інспектор (потрібен node/npx)
 OLLAMA_MODEL=qwen2.5:7b python lab2.py   # агент через локальну Ollama
 ```
 
@@ -116,3 +116,67 @@ OLLAMA_MODEL=qwen2.5:7b python lab2.py   # агент через локальн�
 - `mistral:7b-instruct-q4_K_M` не підтримує tools в Ollama (помилка 400 `does not support tools`); замінено на `qwen2.5:7b`.
 - Модель частково працює на CPU, тому таймаут зроблено налаштовуваним (`AGENT_TIMEOUT`, 1200 с), а агент читає короткий `requirements.txt` замість README.md.
 - На кроці 2 модель написала "я перечитав файл", хоча лише згадала вже прочитаний; це обмеження 7B-моделі, код тут ні до чого.
+
+# Task 2.2 — ReAct-агент з контрольною точкою
+
+Агент: [agent.py](agent.py). Підключається до MCP-сервера з Task 2.1 ([mcp_server.py](mcp_server.py): `read_file`, `list_directory`) через stdio, будує ReAct-граф LangGraph (`create_react_agent`) із чекпоінтером `AsyncSqliteSaver` (файл `checkpoints.db`, не потрапляє в Git). `MemorySaver` не підходить для перезапуску процесу: він живе лише в пам'яті. Модель — `qwen2.5:7b` через Ollama.
+
+Логіка запуску за `thread_id` (`THREAD_ID`, за замовчуванням `task22_thread`):
+- стану немає: новий запуск із завданням;
+- стан незавершений (`state.next` не порожній): відновлення з `None` на вході без повторного запиту;
+- стан завершений: виводить збережену відповідь і `[VERIFIED]`.
+
+Захисні межі (AgentOps), усі налаштовуються змінними середовища:
+- `RECURSION_LIMIT` (10): ліміт кроків графа, при перевищенні `GraphRecursionError` і код виходу 2;
+- `LLM_TIMEOUT` (120 с): timeout запиту до Ollama, `max_retries=0`;
+- рядок `[SYSTEM] model=... url=... temperature=... timeout=... recursion_limit=... thread_id=...` фіксує параметри прогону для відтворюваності.
+
+Підрахунок рядків робить код, а не LLM: після завершення `[VERIFIED]` береться з результату `read_file` у збереженому стані (`len(text.splitlines())`).
+
+Запуск:
+```bash
+pip install -r requirements.txt
+THREAD_ID=hw12_final STEP_DELAY=15 python -u agent.py 2>&1 | tee run1.log   # Ctrl+C у паузі після першого [TOOL CALL]
+THREAD_ID=hw12_final python -u agent.py 2>&1 | tee -ia run2.log             # той самий thread_id: відновлення
+```
+`-u` потрібен, щоб вивід не буферизувався через `tee`.
+
+## Журнал виконання
+
+Повні логи: [run1.log](run1.log), [run2.log](run2.log). Нижче скорочено (прибрано рядки `INFO` від MCP та попередження про deprecation `create_react_agent`).
+
+Прогін 1: Ctrl+C у паузі після рішення моделі викликати `list_directory`, до виконання інструмента:
+```
+[SYSTEM] model=qwen2.5:7b url=http://localhost:11434/v1 temperature=0.0 timeout=120.0s recursion_limit=10 thread_id=hw12_final
+[SYSTEM] thread_id='hw12_final': новий запуск.
+[USER] Find all .py files in the current directory, read the first file found, and report how many lines it contains
+[TOOL CALL] list_directory({'path': '.'})
+^C
+```
+
+Прогін 2: той самий `thread_id`. Стан підхоплено з SQLite (2 повідомлення, наступний вузол `tools`), завдання не надсилається повторно, `list_directory` виконується вже після відновлення. Я ще раз перервав (Ctrl+C) після результату, тож стан став «3 повідомлення, наступний вузол `agent`». Фінальне відновлення:
+```
+[SYSTEM] thread_id='hw12_final': знайдено незавершений стан (3 повідомлень, наступний вузол: ('agent',)). ВІДНОВЛЕННЯ без повторного запиту.
+[TOOL CALL] read_file({'path': 'crewai_agent.py'})
+[MCP SERVER LOG] read_file(path='crewai_agent.py')
+[TOOL RESULT] read_file: import os
+from crewai import Agent, Task, Crew, Process, LLM
+...
+[AI] The file "crewai_agent.py" contains 127 lines.
+[VERIFIED] crewai_agent.py contains 65 lines (підраховано кодом)
+```
+
+Разом 2 виклики інструментів: `list_directory({'path': '.'})` і `read_file({'path': 'crewai_agent.py'})`. Жодне переривання не повторювало вже виконані кроки.
+
+## Промпти та ручні правки
+
+Промпти до AI-асистента (Claude Code): текст завдання Task 2.2 (ReAct на LangGraph, збереження стану, відновлення після Ctrl+C), а потім список зауважень з рев'ю: підрахунок рядків, назва `mcp_server.py`, `recursion_limit`, timeout, модель і URL у лозі.
+
+Що довелося виправляти:
+- `MemorySaver` не переживає перезапуск процесу, тому використано `AsyncSqliteSaver` (`langgraph-checkpoint-sqlite`, `aiosqlite`).
+- Результат MCP-інструмента приходить списком текстових блоків; для виводу їх склеєно в один рядок.
+- Без системного промпта модель повторювала `list_directory` і переказувала файл; додано `SYSTEM_PROMPT`.
+- Через `| tee` вивід буферизувався, тому Ctrl+C було важко влучити в паузу; додано `python -u`, `STEP_DELAY` і `tee -i`.
+- **Підрахунок рядків.** 7B-модель рахує неправильно і нестабільно: у різних прогонах відповіді були 53 і 127, а справжнє значення 65 (`wc -l`). Навіть із забороною в промпті модель все одно називає число. Тому обчислення винесено в код (`[VERIFIED]`), а відповідь LLM не вважається джерелом істини. Це обмеження моделі, а не механізму чекпоінтів чи MCP.
+- «Перший файл»: `list_directory` повертає `sorted(...)`, тож порядок детермінований (`crewai_agent.py` — перший `.py`). Сортування чутливе до регістру.
+- `create_react_agent` позначено deprecated у LangGraph 1.0 (замінник `langchain.agents.create_agent`); міграцію свідомо відкладено.

@@ -13,7 +13,7 @@ from langgraph.checkpoint.memory import MemorySaver
 # Конфігурація параметрів запуску MCP-сервера через stdio
 server_params = StdioServerParameters(
     command=sys.executable,
-    args=[os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_server_lab1.py")]
+    args=[os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_server.py")]
 )
 
 

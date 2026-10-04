@@ -2,3 +2,5 @@ mcp[cli]<2
 langchain-mcp-adapters
 langchain-openai
 langgraph
+langgraph-checkpoint-sqlite
+aiosqlite
